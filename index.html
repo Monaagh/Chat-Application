@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title> Web Chat</title>
+
+    <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://code.jquery.com/jquery-1.11.1.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/js-cookie@2/src/js.cookie.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+
+
+    <script>
+        $(document).ready(function() {
+            //var cookie_names = ['C1', 'C2','C3','C4','C5'];
+
+            var socket = io();
+            function colorEvaluator(colorNickName) {
+                var co = document.getElementById("colorTest");
+                co.style.color = "";
+                co.style.color = colorNickName;
+                return co.style.color ? true: false;
+            }
+
+            socket.on('connect', function() {
+
+                if (Cookies.get('userCookie')) {
+                    var name = Cookies.get('userCookie');
+                    socket.emit('old user', name);
+                }
+                else {
+                    socket.emit('new user','userCookie');
+                    socket.on("setCookie", function(name){
+                       Cookies.set('userCookie', name) ;
+                    });
+                }
+
+            });
+
+
+            socket.on('new user connected', function(clientID, chatHistory, userList) {
+
+                var userID = clientID.socketID;
+                var userName = clientID.name;
+                if (userID === socket.id) {
+                    $('#user-name').text("You are " + userName);
+
+                    for (let i=0; i<chatHistory.length; i++) {
+                        var message = chatHistory[i].text;
+                        var time = new Date(chatHistory[i].time).toLocaleTimeString(undefined, {
+                            hour12: false,
+                            hour: '2-digit',
+                            minute: '2-digit',
+                        });
+                        var ID = chatHistory[i].ID;
+                        var coloredID = ID.fontcolor(chatHistory[i].color);
+
+                        $('#chat-content').append(time + " " + coloredID + ": " + message);
+                        $('#chat-content').append("<br />");
+                    }
+
+                    $('#user-list').text(userList[0].name);
+
+                    for (let i=1; i < userList.length; i++) {
+                        $('#user-list').append($('<li>').text(userList[i].name));
+                    }
+                } else {
+                   $('#user-list').append($('<li>').text(userName));
+                }
+				
+            });
+            socket.on('old user connected', function(clientID, chatHistory, userList) {
+
+                var userID = clientID.socketID;
+                var userName = clientID.name;
+				if (userName === Cookies.get('userCookie')) {
+                    $('#user-name').text("You are " + userName);
+
+                    for (let i=0; i<chatHistory.length; i++) {
+                        var message = chatHistory[i].text;
+                        var time = new Date(chatHistory[i].time).toLocaleTimeString(undefined, {
+                            hour12: false,
+                            hour: '2-digit',
+                            minute: '2-digit',
+                        });
+                        var ID = chatHistory[i].ID;
+                        var coloredID = ID.fontcolor(chatHistory[i].color);
+
+                        var chat_message = time + " " + coloredID + ": " + message;
+                        if (ID === Cookies.get('userCookie')) {
+                            chat_message = chat_message.bold();
+                        }
+
+                        $('#chat-content').append(chat_message);
+                        $('#chat-content').append("<br />");
+
+                    }
+                    $('#user-list').text(userList[0].name);
+
+                    for (let i=1; i < userList.length; i++) {
+                        console.log("user list: " + userList[i].name);
+                        $('#user-list').append($('<li>').text(userList[i].name));
+                    }
+				} else {
+                   $('#user-list').append($('<li>').text(userName));
+                }
+
+            });
+
+            socket.on('userName Changed', function(newName) {
+                Cookies.set('userCookie', newName);
+            });
+            socket.on('userList changed', function (userList, newName) {
+
+                for (let i=0; i<userList.length; i++) {
+                    if (userList[i].name === Cookies.get('userCookie')) {
+						console.log(userList[i].name);
+						console.log(Cookies.get('userCookie'));
+                        $('#user-name').text("You are " + userList[i].name);
+                    }
+                }
+
+                $('#user-list').text(userList[0].name);
+                for (let i=1; i < userList.length; i++) {
+                    $('#user-list').append($('<li>').text(userList[i].name));
+                }
+            });
+
+            $('form').submit(function(e) {
+                e.preventDefault();
+
+                var textMessage = $('#message').val();
+
+                if ( textMessage.substr(0,6) === "/nick ") {
+                    var nickName = textMessage.substr(6);
+                    var index = nickName.indexOf(' ');
+
+                    if (index !== -1) {
+                        if (nickName.length === index + 1) {
+                            socket.emit('change nickname', Cookies.get('userCookie'),textMessage)
+                        }
+                        else {
+                            $("#errNickname2").display = 'block';
+                            $("#errNickname2").dialog({
+                                closeOnEscape: false,
+                                open: function(event, ui) {
+                                    $(".ui-dialog-titlebar-close", ui.dialog | ui).hide();
+                                },
+                                modal: true,
+                                buttons: {
+                                    Ok: function() {
+                                        $( this ).dialog( "close" );
+                                    }
+                                }
+                            });
+                        }
+                    }
+                    else {
+                        socket.emit('change nickname', Cookies.get('userCookie'), textMessage)
+                    }
+                }
+                else if ( textMessage.substr(0,11) === "/nickcolor "){
+                    var colorNickName = textMessage.substr(11);
+                    var index = colorNickName.indexOf(' ');
+                    var len = colorNickName.length;
+
+                    if (index !== -1) {
+                        if (len === index + 1) {
+                            if (colorEvaluator(colorNickName.substr(0,len-1)) === true) {
+                                socket.emit('change color', Cookies.get('userCookie'),textMessage)
+                            }
+                            else{
+                                $("#errNickcolor1").display = 'block';
+                                $("#errNickcolor1").dialog({
+                                    closeOnEscape: false,
+                                    open: function(event, ui) {
+                                        $(".ui-dialog-titlebar-close", ui.dialog | ui).hide();
+                                    },
+                                    modal: true,
+                                    buttons: {
+                                        Ok: function() {
+                                            $( this ).dialog( "close" );
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                        else {
+                            $("#errNickcolor2").display = 'block';
+                            $("#errNickcolor2").dialog({
+                                closeOnEscape: false,
+                                open: function(event, ui) {
+                                    $(".ui-dialog-titlebar-close", ui.dialog | ui).hide();
+                                },
+                                modal: true,
+                                buttons: {
+                                    Ok: function() {
+                                        $( this ).dialog( "close" );
+                                    }
+                                }
+                            });
+                        }
+                    }
+                    else {
+
+                        if (colorEvaluator(colorNickName) === true) {
+                            socket.emit('change color', Cookies.get('userCookie'),textMessage);
+                        }
+                        else {
+                            $("#errNickcolor1").display = 'block';
+                            $("#errNickcolor1").dialog({
+                                closeOnEscape: false,
+                                open: function(event, ui) {
+                                    $(".ui-dialog-titlebar-close", ui.dialog | ui).hide();
+                                },
+                                modal: true,
+                                buttons: {
+                                    Ok: function() {
+                                        $( this ).dialog( "close" );
+                                    }
+                                }
+                            });
+                        }
+                    }
+
+                }
+                else {
+                    socket.emit('chat message', Cookies.get('userCookie'),textMessage);
+                }
+                $('#message').val('');
+                return false;
+            });
+
+            socket.on('chat message', function(msg) {
+                var message = msg.text;
+                var time = new Date(msg.time).toLocaleTimeString(undefined, {
+                    hour12: false,
+                    hour: '2-digit',
+                    minute: '2-digit',
+                });
+                var ID = msg.ID;
+                var result = ID.fontcolor(msg.color);
+                
+                var chat_message = time + " " + result + ": " + message;
+                if (ID === Cookies.get('userCookie')) {
+                    chat_message = chat_message.bold();
+                }
+
+                $('#chat-content').append(chat_message);
+                $('#chat-content').append("<br />");
+
+            });
+
+
+            socket.on('err', function() {
+                $("#errNickname1").display = 'block';
+                $("#errNickname1").dialog({
+                    closeOnEscape: false,
+                    open: function(event, ui) {
+                        $(".ui-dialog-titlebar-close", ui.dialog | ui).hide();
+                    },
+                    modal: true,
+                    buttons: {
+                        Ok: function() {
+                            $( this ).dialog( "close" );
+                        }
+                    }
+                });
+            });
+        });
+
+    </script>
+    <style>
+		
+		
+		html, body {
+			height: 100%;
+		}
+		
+		.container {
+			position: absolute;
+			width:100%;
+			height: 100%;
+			background-color: #66665C
+			
+			
+
+		}
+		
+        #content {
+            width: 100%;
+            height: 90%;
+
+            margin:auto;
+            font-family: Arial, Helvetica, sans-serif;
+
+        }
+
+        #chat-content {
+            width: 60%;
+            height: 90%;
+            margin: 2%;
+            margin-left:4%;
+            border: 1px solid #939384;
+            float: left;
+            list-style-type: none;
+            overflow-y: scroll;
+            background-color: #f5f5dc;
+            font-size: 20px;
+        }
+
+        #user-name {
+            width: 60%;
+            margin-top: 2%;
+            margin-left: 4%;
+            margin-right: 2%;
+            float:left;
+            color: #f5f5dc;
+            font-size:20px;
+            font-style: oblique;
+        }
+
+        #user-list {
+            width: 27%;
+            margin: 2%;
+            margin-right: 4%;
+            height: 90%;
+            border: 1px solid #939384;
+            float: left;
+            list-style-type: none;
+            overflow-y: scroll;
+            background-color: #f5f5dc;
+            font-size: 20px;
+        }
+
+        #online-user {
+            width: 27%;
+            margin-top: 2%;
+            margin-left: 2%;
+            margin-right: 2%;
+            float:left;
+            color: #f5f5dc;
+            font-size:20px;
+            font-style: oblique;
+        }
+
+        #form-content {
+            width:100%;
+            margin-left:4%;
+            margin-right:4%;
+            height: 20%;
+        }
+
+        #message {
+            width:91%;
+            height: 20%;
+            background-color: #f5f5dc;     
+        }
+
+
+        #errNickname1 {
+            display: none;
+        }
+
+        #errNickname2 {
+            display: none;
+        }
+
+        #errNickcolor1 {
+            display: none;
+        }
+
+        #errNickcolor2 {
+            display: none;
+        }
+
+        .ui-dialog .ui-dialog-buttonpane .ui-dialog-buttonset {
+            float: none;
+        }
+
+        .ui-dialog .ui-dialog-buttonpane {
+            text-align: center; // left/center/right
+        }
+
+        #colorTest {
+            display: none;
+        }
+
+        /* Extra Small Devices */
+        @media only screen and (max-width : 700px) {
+            html, body {
+                height: 100%;
+            }
+
+            .container {
+                position: absolute;
+                width:100%;
+                height: 100%;
+                background-color: #66665C;
+
+            }
+
+            #content {
+                width: 100%;
+                height: 90%;
+
+                margin:auto;
+                font-family: Arial, Helvetica, sans-serif;
+
+            }
+
+            #chat-content {
+                width: 60%;
+                height: 96%;
+                margin: 2%;
+                margin-left:4%;
+                border: 1px solid #939384;
+                float: left;
+                list-style-type: none;
+                overflow-y: scroll;
+                background-color: #f5f5dc;
+                font-size: 12px;
+            }
+
+            #user-name {
+                width: 60%;
+                margin-top: 2%;
+                margin-left: 4%;
+                margin-right: 2%;
+                float:left;
+                color: #f5f5dc;
+                font-size:12px;
+                font-style: oblique;
+            }
+
+            #user-list {
+                width: 25%;
+                margin: 2%;
+                margin-right: 4%;
+                height: 96%;
+                border: 1px solid #939384;
+                float: left;
+                list-style-type: none;
+                overflow-y: scroll;
+                background-color: #f5f5dc;
+                font-size: 12px;
+            }
+
+            #online-user {
+                width: 25%;
+                margin-top: 2%;
+                margin-left: 2%;
+                margin-right: 2%;
+                float:left;
+                color: #f5f5dc;
+                font-size:12px;
+                font-style: oblique;
+            }
+
+            #form-content {
+                width:100%;
+                margin-left:4%;
+                margin-right:4%;
+                height: 20%;
+            }
+
+            #message {
+                width:88.5%;
+                height: 20%;
+                background-color: #f5f5dc;
+            }
+
+        }
+
+
+    </style>
+
+</head>
+<body>
+<div class="container">
+    <div id="content">
+        <div id="user-name">User Names</div>
+        <div id="online-user">Online Users</div>
+        <div id="chat-content"></div>
+        <div id="user-list"></div>
+        <form id="form-content">
+            <input id="message" type="text">
+        </form>
+        <div id="errNickname1" title="Nickname Error">
+            This username has been selected. Please choose another name.
+        </div>
+
+        <div id="errNickname2" title="Nickname Error">
+            Wrong format for changing username. Please use this command to change your name:
+            /nick "new nickname"
+        </div>
+
+        <div id="errNickcolor1" title="Nickname Color Error">
+            Please select a correct color.
+        </div>
+        <div id="errNickcolor2" title="Nickname Color Error">
+            Wrong format for changing username color. Please use this command to change your name color:
+            /nickcolor RRGGBB
+        </div>
+        <div id="colorTest">manam</div>
+    </div>
+</div>
+
+
+</body>
+</html>
